@@ -1,6 +1,7 @@
 --num-nodes 2 \
 --machine-type n1-standard-2 \
 --scopes "https://www.googleapis.com/auth/source.read_write,cloud-platform"
+
 gcloud container clusters list
 gcloud container clusters get-credentials jenkins-cd
 kubectl cluster-info
