@@ -1,0 +1,64 @@
+--num-nodes 2 \
+--machine-type n1-standard-2 \
+--scopes "https://www.googleapis.com/auth/source.read_write,cloud-platform"
+gcloud container clusters list
+gcloud container clusters get-credentials jenkins-cd
+kubectl cluster-info
+Ensure your repo is up to date and use appropriate installation commands :
+helm repo add jenkins https://charts.jenkins.io
+helm repo update
+helm install cd jenkins/jenkins -f jenkins/values.yaml --version 1.2.2 --wait
+kubectl get pods
+kubectl create clusterrolebinding jenkins-deploy --clusterrole=cluster-admin --serviceaccount=default:cd-jenkins
+clusterrolebinding.rbac.authorization.k8s.io/jenkins-deploy created
+export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/component=jenkins-master" -l "app.kubernetes.io/instance=cd" -o jsonpath="{.items[0].metadata.name}")
+kubectl port-forward $POD_NAME 8080:8080 >> /dev/null &
+kubectl get svc
+printf $(kubectl get secret cd-jenkins -o jsonpath="{.data.jenkins-admin-password}" | base64 --decode);echo
+cd sample-app
+kubectl create ns production
+kubectl apply -f k8s/production -n production
+kubectl apply -f k8s/services -n production
+kubectl scale deployment gceme-frontend-production -n production --replicas 4
+kubectl get pods -n production -l app=gceme -l role=frontend
+kubectl get pods -n production -l app=gceme -l role=backend
+kubectl get service gceme-frontend -n production
+export FRONTEND_SERVICE_IP=$(kubectl get -o jsonpath="{.status.loadBalancer.ingress[0].ip}" --namespace=production services gceme-frontend)
+curl http://$FRONTEND_SERVICE_IP/version
+gcloud source repos create default
+git checkout -b new-feature
+vi Jenkinsfile
+i
+ PROJECT = "YOUR_ID"
+ APP_NAME = "gceme"
+ FE_SVC_NAME = "${APP_NAME}-frontend"
+ CLUSTER = "jenkins-cd"
+ CLUSTER_ZONE = "us-east1-d"
+ IMAGE_TAG = "gcr.io/${PROJECT}/${APP_NAME}:${env.BRANCH_NAME}.${env.BUILD_NUMBER}"
+ JENKINS_CRED = "${PROJECT}"
+ vi html.go
+ i
+ <div class="card orange">
+:wq
+vi main.go
+i
+ const version string = "2.0.0"
+:wq
+git add Jenkinsfile html.go main.go
+git commit -m "Version 2.0.0"
+git push origin new-feature
+kubectl proxy &
+curl \
+http://localhost:8001/api/v1/namespaces/new-feature/services/gceme-frontend:80/proxy/version
+git checkout -b canary
+git push origin canary
+export FRONTEND_SERVICE_IP=$(kubectl get -o \
+jsonpath="{.status.loadBalancer.ingress[0].ip}" --namespace=production services gceme-frontend)
+while true; do curl http://$FRONTEND_SERVICE_IP/version; sleep 1; done
+git checkout master
+git merge canary
+git push origin master
+export FRONTEND_SERVICE_IP=$(kubectl get -o \
+jsonpath="{.status.loadBalancer.ingress[0].ip}" --namespace=production services gceme-frontend)
+while true; do curl http://$FRONTEND_SERVICE_IP/version; sleep 1; done
+kubectl get service gceme-frontend -n production
